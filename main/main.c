@@ -28,36 +28,6 @@
 #include "services/gap/ble_svc_gap.h"
 #include "blecent.h"
 
-#if CONFIG_EXAMPLE_USE_CI_ADDRESS
-#ifdef CONFIG_IDF_TARGET_ESP32
-#define TEST_CI_ADDRESS_CHIP_OFFSET (0)
-#elif CONFIG_IDF_TARGET_ESP32C2
-#define TEST_CI_ADDRESS_CHIP_OFFSET (1)
-#elif CONFIG_IDF_TARGET_ESP32C3
-#define TEST_CI_ADDRESS_CHIP_OFFSET (2)
-#elif CONFIG_IDF_TARGET_ESP32C6
-#define TEST_CI_ADDRESS_CHIP_OFFSET (3)
-#elif CONFIG_IDF_TARGET_ESP32C5
-#define TEST_CI_ADDRESS_CHIP_OFFSET (4)
-#elif CONFIG_IDF_TARGET_ESP32H2
-#define TEST_CI_ADDRESS_CHIP_OFFSET (5)
-#elif CONFIG_IDF_TARGET_ESP32P4
-#define TEST_CI_ADDRESS_CHIP_OFFSET (6)
-#elif CONFIG_IDF_TARGET_ESP32S3
-#define TEST_CI_ADDRESS_CHIP_OFFSET (7)
-#endif
-#endif
-
-/*** The UUID of the service containing the subscribable characterstic ***/
-static const ble_uuid_t * remote_svc_uuid =
-    BLE_UUID128_DECLARE(0x2d, 0x71, 0xa2, 0x59, 0xb4, 0x58, 0xc8, 0x12,
-                     	0x99, 0x99, 0x43, 0x95, 0x12, 0x2f, 0x46, 0x59);
-
-/*** The UUID of the subscribable chatacteristic ***/
-static const ble_uuid_t * remote_chr_uuid =
-    BLE_UUID128_DECLARE(0x00, 0x00, 0x00, 0x00, 0x11, 0x11, 0x11, 0x11,
-                     	0x22, 0x22, 0x22, 0x22, 0x33, 0x33, 0x33, 0x33);
-
 static const char *tag = "NimBLE_BLE_CENT";
 static int blecent_gap_event(struct ble_gap_event *event, void *arg);
 static uint8_t peer_addr[6];
@@ -234,25 +204,6 @@ blecent_connect_if_interesting(void *disc)
     }
 }
 
-#if MYNEWT_VAL(BLE_POWER_CONTROL)
-static void blecent_power_control(uint16_t conn_handle)
-{
-    int rc;
-
-    rc = ble_gap_read_remote_transmit_power_level(conn_handle, 0x01 );  // Attempting on LE 1M phy
-    assert (rc == 0);
-
-    rc = ble_gap_set_transmit_power_reporting_enable(conn_handle, 0x01, 0x01);
-    assert (rc == 0);
-
-    rc = ble_gap_set_path_loss_reporting_param(conn_handle, 60, 10, 30, 10, 2 ); //demo values
-    assert (rc == 0);
-
-    rc = ble_gap_set_path_loss_reporting_enable(conn_handle, 0x01);
-    assert (rc == 0);
-}
-#endif
-
 /**
  * The nimble host executes this callback when a GAP event occurs.  The
  * application associates a GAP event callback with each connection that is
@@ -361,14 +312,15 @@ blecent_gap_event(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_NOTIFY_RX:
         /* Peer sent us a notification or indication. */
-        MODLOG_DFLT(INFO, "received %s; conn_handle=%d attr_handle=%d "
-                    "attr_len=%d\n",
-                    event->notify_rx.indication ?
-                    "indication" :
-                    "notification",
-                    event->notify_rx.conn_handle,
-                    event->notify_rx.attr_handle,
-                    OS_MBUF_PKTLEN(event->notify_rx.om));
+        // TODO: Nice info, but output console get very messy
+        // MODLOG_DFLT(INFO, "received %s; conn_handle=%d attr_handle=%d "
+        //             "attr_len=%d\n",
+        //             event->notify_rx.indication ?
+        //             "indication" :
+        //             "notification",
+        //             event->notify_rx.conn_handle,
+        //             event->notify_rx.attr_handle,
+        //             OS_MBUF_PKTLEN(event->notify_rx.om));
 
         /* Attribute data is contained in event->notify_rx.om. Use
          * `os_mbuf_copydata` to copy the data received in notification mbuf */
@@ -419,10 +371,7 @@ blecent_on_sync(void)
     rc = ble_hs_util_ensure_addr(0);
     assert(rc == 0);
 
-#if !CONFIG_EXAMPLE_INIT_DEINIT_LOOP
-    /* Begin scanning for a peripheral to connect to. */
     blecent_scan();
-#endif
 }
 
 void blecent_host_task(void *param)
@@ -433,42 +382,6 @@ void blecent_host_task(void *param)
 
     nimble_port_freertos_deinit();
 }
-
-#if CONFIG_EXAMPLE_INIT_DEINIT_LOOP
-/* This function showcases stack init and deinit procedure. */
-static void stack_init_deinit(void)
-{
-    int rc;
-    while(1) {
-
-        vTaskDelay(1000);
-
-        ESP_LOGI(tag, "Deinit host");
-
-        rc = nimble_port_stop();
-        if (rc == 0) {
-            nimble_port_deinit();
-        } else {
-            ESP_LOGI(tag, "Nimble port stop failed, rc = %d", rc);
-            break;
-        }
-
-        vTaskDelay(1000);
-
-        ESP_LOGI(tag, "Init host");
-
-        rc = nimble_port_init();
-        if (rc != ESP_OK) {
-            ESP_LOGI(tag, "Failed to init nimble %d ", rc);
-            break;
-        }
-
-        nimble_port_freertos_init(blecent_host_task);
-
-        ESP_LOGI(tag, "Waiting for 1 second");
-    }
-}
-#endif
 
 void
 app_main(void)
@@ -504,16 +417,9 @@ app_main(void)
     /* XXX Need to have template for store */
     ble_store_config_init();
 
-    // xTaskCreate(blecent_host_task, "blecent_host_task", 4096, NULL, 5, NULL);
-
     nimble_port_freertos_init(blecent_host_task);
 
     while(1) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
-
-#if CONFIG_EXAMPLE_INIT_DEINIT_LOOP
-    stack_init_deinit();
-#endif
-
 }
